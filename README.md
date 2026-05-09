@@ -1,6 +1,325 @@
 # pi-superpowers
 
-> Superpowers 工作流技能库的 Pi 平台移植版，含中文触发支持
+### A translation of the README to [Chinese is available too.](#chinese)
+### English
+
+**pi-superpowers** ports the 14 professional workflow skills from [obra/superpowers](https://github.com/obra/superpowers) to the [Pi](https://github.com/badlogic/pi) programming assistant platform.
+
+- 🇨🇳 **Bilingual Trigger Words**: Each skill supports bilingual triggers (Chinese and English); Chinese questions automatically match the corresponding skill.
+- 🔌 **Bootstrap Extension**: Automatically injects skill usage rules into the context at the start of every session.
+- 🔧 **Tool Mapping**: Automatically maps the original Claude Code tools (`Skill`, `TodoWrite`, `Task`) to their Pi equivalent operations.
+- 🤖 **`dispatch_agent` Tool**: Simulates Claude Code's `Task` subagent by implementing context isolation via the `pi --no-session --print` subprocess.
+- ⚡ **Prompt Templates**: 3 slash commands (`/brainstorm`, etc.).
+
+***
+
+## Table of Contents
+
+- [Skills Overview](#skills-overview)
+- [Typical Workflows](#typical-workflows)
+- [Prompt Template Commands](#prompt-template-commands)
+- [Tool Mapping Reference](#tool-mapping-reference)
+- [dispatch_agent Tool](#dispatch_agent-tool)
+- [Bootstrap Injection Mechanism](#bootstrap-injection-mechanism)
+- [Known Limitations](#known-limitations)
+- [Installation](#installation)
+
+***
+
+## Skills Overview
+
+Once installed, a total of **14 skills** are provided. The skill descriptions cover both Chinese and English keywords, and Pi automatically loads the corresponding skill when it receives a matching request.
+
+Any skill can also be forcibly loaded via the `/skill:<name>` command.
+
+### Development Workflow
+
+| Skill | Trigger Scenario | Chinese Keyword Examples |
+|------|---------|--------------|
+| `brainstorming` | Requirements analysis and architecture design before implementing a new feature/component | brainstorm, build a new feature, where to start, requirements analysis |
+| `writing-plans` | Breaking down requirements into fine-grained implementation steps | write a plan, create a development plan, split tasks, make a plan |
+| `subagent-driven-development` | Executing multiple independent tasks according to an implementation plan | execute plan, start implementation, execute task by task |
+| `executing-plans` | Batch executing an existing written plan | implement according to plan, batch execute tasks |
+| `test-driven-development` | Before implementing any feature or fixing a bug | TDD, test-driven development, write tests first, test first |
+| `using-git-worktrees` | When isolation from the current workspace is needed | git worktree, isolated development, new branch development |
+| `dispatching-parallel-agents` | Facing 2+ parallelizable independent tasks | parallel processing, multi-task concurrency, fix multiple issues at once |
+| `verification-before-completion` | Right before declaring a task as complete | verify completion, before declaring done, pre-commit verification |
+
+### Quality Assurance
+
+| Skill | Trigger Scenario | Chinese Keyword Examples |
+|------|---------|--------------|
+| `systematic-debugging` | Encountering a bug, test failure, or unexpected behavior | debugging, find bug, fix issue, test failure, root cause analysis |
+| `requesting-code-review` | Code review after completing a task or before merging | code review, review code, pre-commit review |
+| `receiving-code-review` | Processing workflow after receiving review feedback | process review feedback, respond to review, technical rebuttal |
+| `finishing-a-development-branch` | Implementation complete, tests passed, ready for integration | finish branch, submit PR, merge code, end development |
+
+### Meta-skills
+
+| Skill | Trigger Scenario | Chinese Keyword Examples |
+|------|---------|--------------|
+| `using-superpowers` | Beginning of every conversation (automatically injected by Bootstrap extension) | triggers automatically, no manual action needed |
+| `writing-skills` | Creating or modifying skill files | write skill, create new skill, design workflow skill |
+
+***
+
+## Typical Workflows
+
+### 1. Full Feature Development Flow
+
+```
+You: Help me build a user permission management module
+ └→ AI automatically loads the brainstorming skill, starting requirements analysis
+    ↓ Explores requirements, proposes multiple options, and gets confirmation
+You: Okay, let's go with this option
+ └→ AI automatically loads the writing-plans skill, breaking down implementation steps
+    ↓ Generates a plan with 2-5 minute granularity per step
+You: Start implementation
+ └→ AI automatically loads subagent-driven-development / executing-plans skill
+    ↓ Implements task by task using the TDD cycle (write test first, then implement, continue after review passes)
+You: Everything is done
+ └→ AI automatically loads the verification-before-completion skill, running verification commands
+    ↓ After confirming success, loads finishing a development branch and decides on the merging method
+```
+
+### 2. Bug Debugging Flow
+
+```
+You: The test failed with an error, TypeError: Cannot read property 'id' of undefined
+ └→ AI automatically loads the systematic debugging skill
+    ↓ Systematic root cause analysis: confirms symptoms → isolates scope → finds minimal reproduction → fixes
+    ↓ Must write a failing test that reproduces the bug before fixing (TDD)
+```
+
+### 3. Forcing Slash Commands
+
+When automatic triggering is unreliable, force load using the `/skill:` command directly:
+
+```
+/skill:brainstorming          # Forces the start of requirements analysis
+/skill:test-driven-development  # Forces TDD mode
+/skill:systematic-debugging     # Forces systematic debugging
+/skill:verification-before-completion  # Forces completion verification
+```
+
+### 4. Chinese Conversation Examples
+
+| What You Say | Automatically Triggered Skill |
+|---------|-----------|
+| "Help me build a login feature" | `brainstorming` (pre-development analysis) |
+| "This test keeps failing, help me take a look" | `systematic-debugging` |
+| "Develop this API using test-driven development" | `test-driven-development` |
+| "The code is written, help me review it" | `requesting-code-review` |
+| "I'm going to submit a PR" | `verification-before-completion` → `finishing-a-development-branch` |
+| "There are three unrelated bugs to fix" | `dispatching-parallel-agents` |
+
+***
+
+## Prompt Template Commands
+
+Prompt templates are triggered with a `/` prefix, enforcing the complete workflow of the corresponding skill:
+
+| Command | Description |
+|------|-----|
+| `/brainstorm` | Starts the requirements analysis and design flow, forbidding the AI from writing code before confirmation |
+| `/write-plan` | Breaks down the confirmed design into fine-grained implementation steps |
+| `/execute-plan` | Batch executes an existing plan, reporting and waiting for feedback after each batch |
+
+**Usage Example:**
+```
+/brainstorm I want to build a real-time chat room
+/write-plan
+/execute-plan
+```
+
+***
+
+## Tool Mapping Reference
+
+The tool names in Pi differ from the original Claude Code. The Bootstrap extension injects the following mappings into the system prompt, and the AI automatically switches to the Pi equivalent tools:
+
+| Original Claude Code Tool | Pi Alternative |
+|--------------------|--------------|
+| `Skill` tool | `read` tool reads `skills/<name>/SKILL.md`, or use the `/skill:<name>` command |
+| `TodoWrite` | `write`/`edit` tools operate on `TODO.md` in the project root (Markdown checkbox format) |
+| `Task` (subagent dispatch)| **Plan A (Fallback) Sequential Execution Mode**: Implements task-by-task in the current conversation, switching roles for review after each task; **Plan B (Recommended) `dispatch_agent` Tool**: Achieves true context isolation via `pi --no-session --print` subprocess (see instructions below) |
+| `Read` | `read` (same name, direct use)|
+| `Write` | `write` (same name, direct use)|
+| `Edit` | `edit` (same name, direct use)|
+| `Bash` | `bash` (same name, direct use)|
+
+### Subagent Execution Modes
+
+The original superpowers `subagent-driven-development` skill relies on the `Task` tool to dispatch independent subagents. pi-superpowers provides two alternatives:
+
+#### Plan A: Sequential Execution Fallback Mode (No extra tools needed)
+
+Executes tasks sequentially in the current conversation, simulating multiple perspectives through role-switching:
+
+```
+1. Implementer Role: implements task → writes tests → self-reviews → commits
+2. Spec Reviewer Role: uses the read tool for independent verification, does not trust the implementer's report
+3. Code Quality Reviewer Role: reviews code quality (only after Spec passes)
+4. Fixes issues → re-reviews → proceeds to the next task once passed
+```
+
+Task status is tracked using the `TODO.md` file:
+```markdown
+- [x] Task 1: Implement user model
+- [ ] Task 2: Implement authentication middleware
+- [ ] Task 3: Implement login API
+```
+
+***
+
+## dispatch_agent Tool
+
+#### Plan B: `dispatch_agent` Tool (Recommended, requires `pi` in PATH)
+
+`dispatch_agent` is a custom tool registered by pi-superpowers (`extensions/subagent.ts`), which achieves true context isolation by launching a `pi --no-session --print` subprocess, consistent with the behavior of Claude Code's `Task` tool.
+
+**LLM Invocation Example:**
+```javascript
+dispatch_agent({
+  task: "Implement user authentication middleware. Requirements: 1) Verify JWT 2) Handle expiration 3) Write unit tests",
+  role: "implementer"
+})
+```
+
+**Supported Roles (`role` parameter):**
+
+| Role | Description |
+|------|------|
+| `implementer` | Implements tasks, writes tests, self-reviews |
+| `spec-reviewer` | Independently verifies if the implementation meets the specifications (critical perspective) |
+| `code-quality-reviewer` | Reviews code quality, runs only after the Spec review passes |
+| _(Omitted)_ | General subagent without role restrictions |
+
+**Underlying Implementation:**
+```bash
+# When role = "implementer", it's equivalent to:
+pi --no-session --print \
+   --append-system-prompt "You are an implementer." \
+   "Implement user authentication middleware. Requirements: ..."
+```
+
+**Prerequisite**: The `pi` binary must be accessible in `$PATH`. If not found, the tool returns a clear error message instead of crashing.
+
+***
+
+## Bootstrap Injection Mechanism
+
+**Problem**: The original superpowers automatically injects `using-superpowers` content at the start of every session via Claude Code's `SessionStart` Hook. Pi does not have this Hook.
+
+**Solution**: pi-superpowers provides two Pi extensions:
+
+| Extension File | Function |
+|---------|------|
+| `extensions/bootstrap.ts` | Injects `using-superpowers` rules into the system prompt before the first message of every session |
+| `extensions/subagent.ts` | Registers the `dispatch_agent` tool to replace Claude Code's `Task` subagent |
+
+Injection flow of `bootstrap.ts`:
+
+```
+User sends the first message
+      ↓
+before_agent_start triggers
+      ↓
+Detects if this is the first user turn of the current session?
+  Yes → Reads using-superpowers/SKILL.md
+      → Assembles the <EXTREMELY_IMPORTANT> injection block
+      → Appends to systemPrompt
+      → Marks the session as injected (avoids duplicate injection in subsequent turns)
+  No → Does not inject
+      ↓
+AI follows the using-superpowers rules in its response
+```
+
+Injected content includes:
+- The full text of the `using-superpowers` skill (skill usage rules, priorities, red flag checklist)
+- Pi platform tool mapping table (methods to replace Skill/TodoWrite/Task)
+
+***
+
+## Known Limitations
+
+| Limitation | Impact | Mitigation |
+|------|------|---------|
+| No built-in subagents (`Task` tool unavailable) | `subagent-driven-development` cannot execute in true parallel | **Resolved via `dispatch_agent` tool**: `extensions/subagent.ts` implements context isolation through the `pi --no-session --print` subprocess; Fallback: sequential execution mode |
+| No `TodoWrite` tool | Task progress cannot be displayed using the native UI | Track with a `TODO.md` file, functionally equivalent |
+| `before_agent_start` triggers every time | Requires detecting if already injected | Bootstrap extension uses session ID + turn count for dual detection |
+| The flowchart in `using-superpowers` relies on Graphviz | Dot syntax code blocks cannot render in the Pi TUI | The chart still serves as a textual logic reference and doesn't affect functionality |
+
+***
+
+## Installation
+
+### Method 1: npm Installation (Recommended)
+
+```bash
+# Global installation (available for all projects)
+pi install npm:@weiping/pi-superpowers
+
+# Project-level installation (only for the current project, can be committed to share with the team)
+pi install -l npm:@weiping/pi-superpowers
+```
+
+After installation, **restart Pi** for the changes to take effect.
+
+***
+
+### Method 2: Git Installation
+
+```bash
+# Install the latest version from GitHub
+pi install https://github.com/weiping/pi-superpowers
+
+# Lock to a specific version (pi update won't automatically upgrade)
+pi install https://github.com/weiping/pi-superpowers@v1.0.0
+```
+
+***
+
+### Method 3: Automatic Installation via Prompt
+
+Paste the following prompt in a Pi session, and Pi will complete the installation automatically:
+
+```
+Run: pi install npm:@weiping/pi-superpowers, then tell me the install is complete and I need to restart Pi.
+```
+
+***
+
+### Method 4: Local Path Installation
+
+```bash
+# Global installation
+pi install /path/to/pi-superpowers
+
+# Project-level installation
+pi install -l /path/to/pi-superpowers
+```
+
+See [INSTALL.md](INSTALL.md) for details.
+
+***
+
+### OpenClaw Installation
+
+If you use [OpenClaw](https://openclaw.ai):
+
+```bash
+openclaw plugins install @weiping/openclaw-superpowers
+```
+
+***
+
+## License
+
+MIT.  
+The original superpowers project was created by [Jesse Vincent](https://github.com/obra) and is also licensed under the MIT License.
+
+## Chinese
 
 **pi-superpowers** 将 [obra/superpowers](https://github.com/obra/superpowers) 的 14 个专业工作流技能移植到 [Pi](https://github.com/badlogic/pi) 编程助手平台，并添加了：
 
